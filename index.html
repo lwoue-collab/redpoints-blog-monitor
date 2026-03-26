@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Red Points Blog Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: #f8fafc; color: #1e293b; }
+  .header { background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); padding: 32px; color: white; }
+  .header h1 { font-size: 22px; font-weight: 700; }
+  .header p { color: #94a3b8; margin-top: 4px; font-size: 14px; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  .week-bar { display: flex; gap: 12px; overflow-x: auto; margin-bottom: 24px; padding-bottom: 4px; }
+  .week-btn { background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 16px; cursor: pointer; white-space: nowrap; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; color: #64748b; transition: all 0.15s; }
+  .week-btn:hover { border-color: #2563eb; color: #2563eb; }
+  .week-btn.active { background: #2563eb; border-color: #2563eb; color: white; }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .summary-card { background: white; border-radius: 12px; padding: 20px; border: 1px solid #e2e8f0; text-align: center; }
+  .summary-card .num { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 700; }
+  .summary-card .lbl { font-size: 12px; color: #64748b; margin-top: 4px; font-weight: 500; }
+  .summary-card.red .num { color: #dc2626; }
+  .summary-card.amber .num { color: #d97706; }
+  .summary-card.blue .num { color: #2563eb; }
+  .summary-card.green .num { color: #16a34a; }
+  .exec-summary { background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 24px; border: 1px solid #e2e8f0; border-left: 4px solid #2563eb; }
+  .exec-summary h3 { font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+  .exec-summary p { font-size: 14px; line-height: 1.7; color: #334155; white-space: pre-line; }
+  .filters { background: white; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; border: 1px solid #e2e8f0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .filters label { font-size: 13px; font-weight: 600; color: #475569; margin-right: 4px; }
+  .filter-btn { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 12px; font-weight: 500; color: #64748b; font-family: 'DM Sans', sans-serif; transition: all 0.15s; }
+  .filter-btn:hover { border-color: #2563eb; color: #2563eb; }
+  .filter-btn.active { background: #2563eb; border-color: #2563eb; color: white; }
+  .posts-list { display: flex; flex-direction: column; gap: 12px; }
+  .post-card { background: white; border-radius: 12px; padding: 18px 20px; border: 1px solid #e2e8f0; border-left: 4px solid #dc2626; }
+  .post-card[data-has-llm="true"] { border-left-color: #d97706; }
+  .post-card[data-has-stale="true"][data-has-traffic="false"][data-has-llm="false"] { border-left-color: #2563eb; }
+  .post-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 12px; flex-wrap: wrap; }
+  .post-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge { font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 3px 8px; border-radius: 4px; color: white; font-weight: 500; }
+  .badge.score { background: #7c3aed; }
+  .badge.cluster { background: #0f172a; }
+  .post-title { font-size: 14px; font-weight: 600; color: #0f172a; text-decoration: none; display: block; margin-bottom: 10px; }
+  .post-title:hover { color: #2563eb; text-decoration: underline; }
+  .flag-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+  .flag-item { font-size: 13px; color: #475569; padding: 6px 10px; background: #f8fafc; border-radius: 6px; }
+  .empty-state { background: white; border-radius: 12px; padding: 48px; text-align: center; border: 1px solid #e2e8f0; color: #94a3b8; font-size: 15px; }
+  .season-banner { background: #fef9c3; border: 1px solid #fde047; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; font-size: 14px; color: #713f12; }
+  .report-link { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+  @media (max-width: 640px) {
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .filters { flex-direction: column; align-items: flex-start; }
+  }
+  @media print {
+    body { background: white; }
+    .week-bar, .filters { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="max-width:1100px;margin:0 auto">
+    <h1>🔍 Red Points Blog Monitor</h1>
+    <p>KEEP posts only · Updated weekly every Monday · <span style="font-family:'JetBrains Mono',monospace;font-size:12px">Generated March 26, 2026</span></p>
+    <p class="report-link">Live report: <a href="https://lwoue-collab.github.io/redpoints-blog-monitor" style="color:#60a5fa">https://lwoue-collab.github.io/redpoints-blog-monitor</a></p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Week switcher -->
+  <div class="week-bar" id="weekBar"></div>
+
+  <!-- Summary cards -->
+  <div class="summary-grid" id="summaryCards"></div>
+
+  <!-- Executive summary -->
+  <div class="exec-summary">
+    <h3>📝 Weekly Executive Summary</h3>
+    <p id="execSummary"></p>
+  </div>
+
+  <!-- Season banner -->
+  <div class="season-banner" id="seasonBanner" style="display:none"></div>
+
+  <!-- Filters -->
+  <div class="filters" id="filtersBar">
+    <div>
+      <label>Flag type:</label>
+      <button class="filter-btn active" onclick="setFilter('type','all',this)">All</button>
+      <button class="filter-btn" onclick="setFilter('type','traffic',this)">🔴 Traffic</button>
+      <button class="filter-btn" onclick="setFilter('type','llm',this)">🟡 LLM</button>
+      <button class="filter-btn" onclick="setFilter('type','stale',this)">📅 Stale</button>
+    </div>
+    <div id="clusterFilters">
+      <label>Cluster:</label>
+      <button class="filter-btn active" onclick="setFilter('cluster','all',this)">All</button>
+    </div>
+  </div>
+
+  <!-- Posts list -->
+  <div class="posts-list" id="postsList"></div>
+
+</div>
+
+<script>
+const WEEKS_DATA = {"2026-03-16": {"week_end": "2026-03-22", "flagged_count": 15, "traffic_count": 0, "llm_count": 0, "stale_count": 15, "summary": "\ud83d\udcc5 Your most popular \"how-to\" guides haven't been updated in over a year, with some sitting untouched for 3 years. Schedule immediate content audits and updates to maintain SEO rankings and user trust.\n\n\ud83d\udcc5 All flagged content focuses on takedown processes and marketplace protection, which are core to your business value. Prioritize refreshing these high-impact guides since they likely drive qualified leads.\n\n\ud83d\udcc5 The Walmart marketplace guide is severely outdated (3 years old) and could contain incorrect procedures that frustrate users. Update this immediately or consider removing it to protect your brand reputation.", "flagged": [{"path": "/blog/how-to-take-down-a-fake-website/", "url": "https://www.redpoints.com/blog/how-to-take-down-a-fake-website/", "title": "How to take down a fake website before it destroys your brand", "cluster": "Website Takedown", "score": 14, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 14 months (last updated: 2025-02-04, score 14/14)", "months_since_update": 13.8, "last_updated": "2025-02-04"}], "gsc_clicks_this_week": 2, "llm_citations_this_week": 0}, {"path": "/blog/report-infringement-amazon/", "url": "https://www.redpoints.com/blog/report-infringement-amazon/", "title": "How to report copyright and trademark infringement on Amazon", "cluster": "Marketplace Protection", "score": 14, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 14 months (last updated: 2025-02-06, score 14/14)", "months_since_update": 13.8, "last_updated": "2025-02-06"}], "gsc_clicks_this_week": 0, "llm_citations_this_week": 0}, {"path": "/blog/unauthorized-sellers-on-walmart/", "url": "https://www.redpoints.com/blog/unauthorized-sellers-on-walmart/", "title": "How to remove unauthorized sellers on Walmart Marketplace", "cluster": "Marketplace Protection", "score": 14, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 36 months (last updated: 2023-03-27, score 14/14)", "months_since_update": 36.5, "last_updated": "2023-03-27"}], "gsc_clicks_this_week": 0, "llm_citations_this_week": 0}, {"path": "/blog/cloudflare-dmca-takedown/", "url": "https://www.redpoints.com/blog/cloudflare-dmca-takedown/", "title": "How to effectively submit DMCA takedown request to Cloudflare", "cluster": "Copyright Infringement", "score": 13, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 14 months (last updated: 2025-01-28, score 13/14)", "months_since_update": 14.1, "last_updated": "2025-01-28"}], "gsc_clicks_this_week": 2, "llm_citations_this_week": 0}, {"path": "/blog/how-to-legally-take-down-a-website/", "url": "https://www.redpoints.com/blog/how-to-legally-take-down-a-website/", "title": "How to legally take down a website: 5 expert-approved steps", "cluster": "Website Takedown", "score": 13, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 6 months (last updated: 2025-09-19, score 13/14)", "months_since_update": 6.3, "last_updated": "2025-09-19"}], "gsc_clicks_this_week": 2, "llm_citations_this_week": 0}, {"path": "/blog/legal-action-against-counterfeit-goods/", "url": "https://www.redpoints.com/blog/legal-action-against-counterfeit-goods/", "title": "How to take legal action against counterfeit goods' sellers", "cluster": "Counterfeit Goods Protection", "score": 13, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 16 months (last updated: 2024-11-21, score 13/14)", "months_since_update": 16.3, "last_updated": "2024-11-21"}], "gsc_clicks_this_week": 1, "llm_citations_this_week": 0}, {"path": "/blog/tiktok-dmca-takedown/", "url": "https://www.redpoints.com/blog/tiktok-dmca-takedown/", "title": "How to successfully remove stolen content from TikTok with a DMCA takedown", "cluster": "Copyright Infringement", "score": 12, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 11 months (last updated: 2025-05-08, score 12/14)", "months_since_update": 10.7, "last_updated": "2025-05-08"}], "gsc_clicks_this_week": 1, "llm_citations_this_week": 0}, {"path": "/blog/how-to-report-a-scammer-on-telegram/", "url": "https://www.redpoints.com/blog/how-to-report-a-scammer-on-telegram/", "title": "How to report a scammer on Telegram", "cluster": "Platform Scams", "score": 12, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 10 months (last updated: 2025-06-01, score 12/14)", "months_since_update": 9.9, "last_updated": "2025-06-01"}], "gsc_clicks_this_week": 0, "llm_citations_this_week": 0}, {"path": "/blog/how-to-report-copyright-infringement-on-tiktok/", "url": "https://www.redpoints.com/blog/how-to-report-copyright-infringement-on-tiktok/", "title": "How to report a copyright infringement on TikTok", "cluster": "Social Media Takedown", "score": 12, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 12 months (last updated: 2025-04-15, score 12/14)", "months_since_update": 11.5, "last_updated": "2025-04-15"}], "gsc_clicks_this_week": 0, "llm_citations_this_week": 0}, {"path": "/blog/how-to-file-a-dmca-takedown-notice/", "url": "https://www.redpoints.com/blog/how-to-file-a-dmca-takedown-notice/", "title": "How to file a DMCA takedown notice to Google to stop copyright infringement", "cluster": "Copyright Infringement", "score": 12, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 13 months (last updated: 2025-03-10, score 12/14)", "months_since_update": 12.7, "last_updated": "2025-03-10"}], "gsc_clicks_this_week": 0, "llm_citations_this_week": 0}, {"path": "/blog/website-cloning/", "url": "https://www.redpoints.com/blog/website-cloning/", "title": "Website cloning: How to identify, prevent, and respond", "cluster": "Website Takedown", "score": 12, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 14 months (last updated: 2025-01-15, score 12/14)", "months_since_update": 14.5, "last_updated": "2025-01-15"}], "gsc_clicks_this_week": 0, "llm_citations_this_week": 0}, {"path": "/blog/ban-fake-instagram-accounts/", "url": "https://www.redpoints.com/blog/ban-fake-instagram-accounts/", "title": "A step-by-step guide to banning fake Instagram accounts permanently", "cluster": "Social Media Takedown", "score": 12, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 7 months (last updated: 2025-08-20, score 12/14)", "months_since_update": 7.3, "last_updated": "2025-08-20"}], "gsc_clicks_this_week": 0, "llm_citations_this_week": 0}, {"path": "/blog/alibaba-scams/", "url": "https://www.redpoints.com/blog/alibaba-scams/", "title": "9 tips to avoid Alibaba scams", "cluster": "Marketplace Protection", "score": 12, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 14 months (last updated: 2025-02-01, score 12/14)", "months_since_update": 13.9, "last_updated": "2025-02-01"}], "gsc_clicks_this_week": 21, "llm_citations_this_week": 0}, {"path": "/blog/how-to-take-down-a-tiktok-account/", "url": "https://www.redpoints.com/blog/how-to-take-down-a-tiktok-account/", "title": "How to take down a TikTok account", "cluster": "Social Media Takedown", "score": 12, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 10 months (last updated: 2025-05-20, score 12/14)", "months_since_update": 10.3, "last_updated": "2025-05-20"}], "gsc_clicks_this_week": 8, "llm_citations_this_week": 0}, {"path": "/blog/how-to-report-and-take-down-a-fraud-website/", "url": "https://www.redpoints.com/blog/how-to-report-and-take-down-a-fraud-website/", "title": "How to report and take down a fraud website: a step-by-step guide", "cluster": "Website Takedown", "score": 12, "tier": "tier1", "flags": [{"type": "stale", "label": "\ud83d\udcc5 Stale Content", "detail": "Not updated in 13 months (last updated: 2025-03-01, score 12/14)", "months_since_update": 13.0, "last_updated": "2025-03-01"}], "gsc_clicks_this_week": 0, "llm_citations_this_week": 0}], "season": null}};
+const ALL_CLUSTERS = ["Copyright Infringement", "Counterfeit Goods Protection", "Marketplace Protection", "Platform Scams", "Social Media Takedown", "Website Takedown"];
+const CURRENT_WEEK = "2026-03-16";
+
+let activeWeek = CURRENT_WEEK;
+let activeTypeFilter = 'all';
+let activeClusterFilter = 'all';
+
+function init() {
+  renderWeekBar();
+  renderClusterFilters();
+  renderWeek(activeWeek);
+}
+
+function renderWeekBar() {
+  const bar = document.getElementById('weekBar');
+  const weeks = Object.keys(WEEKS_DATA).sort().reverse();
+  bar.innerHTML = weeks.map(wk => {
+    const d = WEEKS_DATA[wk];
+    const label = `Week of ${wk}`;
+    const flagTxt = d.flagged_count > 0 ? ` · ${d.flagged_count} flags` : ' · ✅ stable';
+    return `<button class="week-btn ${wk === activeWeek ? 'active' : ''}" onclick="switchWeek('${wk}', this)">${label}${flagTxt}</button>`;
+  }).join('');
+}
+
+function renderClusterFilters() {
+  const container = document.getElementById('clusterFilters');
+  const allClusters = [...new Set(
+    Object.values(WEEKS_DATA).flatMap(w => (w.flagged || []).map(p => p.cluster))
+  )].sort();
+  const btns = allClusters.map(c =>
+    `<button class="filter-btn" onclick="setFilter('cluster','${c}',this)">${c}</button>`
+  ).join('');
+  container.innerHTML = `<label>Cluster:</label><button class="filter-btn active" onclick="setFilter('cluster','all',this)">All</button>${btns}`;
+}
+
+function switchWeek(wk, btn) {
+  activeWeek = wk;
+  document.querySelectorAll('.week-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderWeek(wk);
+}
+
+function setFilter(type, value, btn) {
+  if (type === 'type') {
+    activeTypeFilter = value;
+    document.querySelectorAll('.filters .filter-btn').forEach(b => {
+      if (b.closest('#filtersBar > div:first-child')) b.classList.remove('active');
+    });
+  } else {
+    activeClusterFilter = value;
+    document.querySelectorAll('#clusterFilters .filter-btn').forEach(b => b.classList.remove('active'));
+  }
+  btn.classList.add('active');
+  renderPosts(WEEKS_DATA[activeWeek]?.flagged || []);
+}
+
+function renderWeek(wk) {
+  const data = WEEKS_DATA[wk];
+  if (!data) return;
+
+  // Summary cards
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="summary-card red"><div class="num">${data.traffic_count}</div><div class="lbl">🔴 Traffic Drops</div></div>
+    <div class="summary-card amber"><div class="num">${data.llm_count}</div><div class="lbl">🟡 LLM Drops</div></div>
+    <div class="summary-card blue"><div class="num">${data.stale_count}</div><div class="lbl">📅 Stale Posts</div></div>
+    <div class="summary-card green"><div class="num">${18 - data.flagged_count}</div><div class="lbl">✅ Stable Posts</div></div>
+  `;
+
+  // Executive summary
+  document.getElementById('execSummary').textContent = data.summary || 'No summary available.';
+
+  // Season banner
+  const banner = document.getElementById('seasonBanner');
+  if (data.season) {
+    banner.textContent = `⏸️ Alert suppression active — ${data.season} period. Baseline calculation resumes next week.`;
+    banner.style.display = 'block';
+  } else {
+    banner.style.display = 'none';
+  }
+
+  renderPosts(data.flagged || []);
+}
+
+function renderPosts(posts) {
+  const container = document.getElementById('postsList');
+
+  const filtered = posts.filter(p => {
+    const typeMatch = activeTypeFilter === 'all' ||
+      p.flags.some(f => f.type === activeTypeFilter);
+    const clusterMatch = activeClusterFilter === 'all' ||
+      p.cluster === activeClusterFilter;
+    return typeMatch && clusterMatch;
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `<div class="empty-state">✅ No posts match the current filters this week.</div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map(p => {
+    const hasTraffic = p.flags.some(f => f.type === 'traffic');
+    const hasLlm = p.flags.some(f => f.type === 'llm');
+    const hasStale = p.flags.some(f => f.type === 'stale');
+    const flagItems = p.flags.map(f =>
+      `<li class="flag-item">${f.label}: ${f.detail}</li>`
+    ).join('');
+    return `
+      <div class="post-card"
+           data-has-traffic="${hasTraffic}"
+           data-has-llm="${hasLlm}"
+           data-has-stale="${hasStale}">
+        <div class="post-header">
+          <div class="post-badges">
+            <span class="badge score">Score ${p.score}/14</span>
+            <span class="badge cluster">${p.cluster}</span>
+            ${hasTraffic ? '<span class="badge" style="background:#dc2626">🔴 Traffic</span>' : ''}
+            ${hasLlm ? '<span class="badge" style="background:#d97706">🟡 LLM</span>' : ''}
+            ${hasStale ? '<span class="badge" style="background:#2563eb">📅 Stale</span>' : ''}
+          </div>
+        </div>
+        <a href="${p.url}" class="post-title" target="_blank">${p.title}</a>
+        <ul class="flag-list">${flagItems}</ul>
+      </div>`;
+  }).join('');
+}
+
+init();
+</script>
+</body>
+</html>
