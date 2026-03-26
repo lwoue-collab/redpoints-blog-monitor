@@ -1,0 +1,93 @@
+name: Blog Monitor — Weekly GSC + Omnia → Pages + Slack + Email
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"   # Every Monday at 8:00 AM UTC
+  workflow_dispatch:        # Manual trigger from GitHub UI
+
+permissions:
+  contents: write           # Push data/ files and index.html
+  pages: write              # Deploy to GitHub Pages
+  id-token: write           # Pages OIDC authentication
+
+jobs:
+  run-monitor:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install \
+            google-auth \
+            google-auth-httplib2 \
+            google-api-python-client \
+            asana \
+            python-dotenv \
+            requests
+
+      - name: Write GSC service account key
+        run: echo '${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}' > gsc_service_account.json
+
+      - name: Restore weekly data cache
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: blog-monitor-data-${{ github.run_id }}
+          restore-keys: blog-monitor-data-
+
+      - name: Run monitor
+        env:
+          GSC_SERVICE_ACCOUNT_FILE: gsc_service_account.json
+          GSC_SITE_URL:             ${{ secrets.GSC_SITE_URL }}
+          ASANA_TOKEN:              ${{ secrets.ASANA_TOKEN }}
+          ASANA_PROJECT_GID:        ${{ secrets.ASANA_PROJECT_GID }}
+          ASANA_WORKSPACE_GID:      ${{ secrets.ASANA_WORKSPACE_GID }}
+          SLACK_WEBHOOK_URL:        ${{ secrets.SLACK_WEBHOOK_URL }}
+          GMAIL_SENDER:             ${{ secrets.GMAIL_SENDER }}
+          GMAIL_APP_PASSWORD:       ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_RECIPIENTS:         ${{ secrets.GMAIL_RECIPIENTS }}
+          OMNIA_TOKEN:              ${{ secrets.OMNIA_TOKEN }}
+          OMNIA_BRAND_ID:           ${{ secrets.OMNIA_BRAND_ID }}
+          ANTHROPIC_API_KEY:        ${{ secrets.ANTHROPIC_API_KEY }}
+          REPORT_URL:               https://lwoue-collab.github.io/redpoints-blog-monitor
+          TRAFFIC_DROP_PCT:         "0.30"
+          TRAFFIC_DROP_ABS:         "50"
+          LLM_DROP_ABS:             "15"
+          LLM_DROP_PCT:             "0.40"
+          STALE_MONTHS:             "6"
+          STALE_MIN_SCORE:          "10"
+        run: python monitor.py
+
+      - name: Save updated data cache
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: blog-monitor-data-${{ github.run_id }}
+
+      - name: Commit data files to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/ index.html
+          git diff --staged --quiet || git commit -m "chore: update blog monitor [$(date '+%Y-%m-%d')]"
+          git push
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "."
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
