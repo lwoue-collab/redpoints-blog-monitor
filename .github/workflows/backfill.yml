@@ -27,9 +27,9 @@ jobs:
       - name: Run backfill
         env:
           GSC_SERVICE_ACCOUNT_FILE: gsc_service_account.json
-          GSC_SITE_URL:             ${{ secrets.GSC_SITE_URL }}
-          OMNIA_TOKEN:              ${{ secrets.OMNIA_TOKEN }}
-          OMNIA_BRAND_ID:           ${{ secrets.OMNIA_BRAND_ID }}
+          GSC_SITE_URL: ${{ secrets.GSC_SITE_URL }}
+          OMNIA_TOKEN: ${{ secrets.OMNIA_TOKEN }}
+          OMNIA_BRAND_ID: ${{ secrets.OMNIA_BRAND_ID }}
         run: python backfill.py
 
       - name: Commit historical data
@@ -39,15 +39,3 @@ jobs:
           git add data/
           git diff --staged --quiet || git commit -m "Add 12-week historical baseline"
           git push
-```
-
----
-
-## Step 3 — Push everything to GitHub
-
-Open PowerShell:
-```
-cd redpoints-blog-monitor
-git add .
-git commit -m "Add backfill script and inline email"
-git push
