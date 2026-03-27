@@ -1,0 +1,53 @@
+name: Blog Monitor — One-Time Historical Backfill
+
+on:
+  workflow_dispatch:
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install google-auth google-auth-httplib2 google-api-python-client requests python-dotenv
+
+      - name: Write GSC service account key
+        run: echo '${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}' > gsc_service_account.json
+
+      - name: Run backfill
+        env:
+          GSC_SERVICE_ACCOUNT_FILE: gsc_service_account.json
+          GSC_SITE_URL:             ${{ secrets.GSC_SITE_URL }}
+          OMNIA_TOKEN:              ${{ secrets.OMNIA_TOKEN }}
+          OMNIA_BRAND_ID:           ${{ secrets.OMNIA_BRAND_ID }}
+        run: python backfill.py
+
+      - name: Commit historical data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git diff --staged --quiet || git commit -m "Add 12-week historical baseline"
+          git push
+```
+
+---
+
+## Step 3 — Push everything to GitHub
+
+Open PowerShell:
+```
+cd redpoints-blog-monitor
+git add .
+git commit -m "Add backfill script and inline email"
+git push

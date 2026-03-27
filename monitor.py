@@ -711,8 +711,158 @@ def send_slack_alert(summary: str, flagged: list[dict], week_end: str, season: s
 # EMAIL
 # ---------------------------------------------------------------------------
 
-def send_email_report(html_content: str, week_end: str, flagged: list[dict]):
-    """Sends the HTML report as an email attachment via Gmail."""
+def build_email_body(flagged: list[dict], week_end: str, summary: str, season: str | None) -> str:
+    """Builds a clean inline HTML email body — no JS, renders in Gmail/Outlook/Apple Mail."""
+    traffic = sum(1 for p in flagged for f in p["flags"] if f["type"] == "traffic")
+    llm     = sum(1 for p in flagged for f in p["flags"] if f["type"] == "llm")
+    stale   = sum(1 for p in flagged for f in p["flags"] if f["type"] == "stale")
+    stable  = len(KEEP_POSTS) - len(flagged)
+
+    # Summary bullets — convert newlines to <br> for HTML
+    summary_html = summary.replace("\n", "<br>") if summary else ""
+
+    # Post cards — show first 5, note remainder
+    post_cards = ""
+    for p in flagged[:5]:
+        for f in p["flags"]:
+            badge_color = {"traffic": "#dc2626", "llm": "#d97706", "stale": "#2563eb"}.get(f["type"], "#64748b")
+            badge_bg    = {"traffic": "#fef2f2",  "llm": "#fffbeb", "stale": "#eff6ff"}.get(f["type"], "#f8fafc")
+            badge_label = {"traffic": "Traffic drop", "llm": "LLM drop", "stale": "Stale content"}.get(f["type"], f["type"])
+            post_cards += f"""
+            <tr>
+              <td style="padding:0 0 10px 0;">
+                <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                  <tr>
+                    <td style="background:{badge_bg};padding:8px 14px;border-bottom:1px solid #e2e8f0;">
+                      <span style="font-size:11px;color:{badge_color};font-weight:600;">{badge_label}</span>
+                      <span style="float:right;font-size:11px;color:#64748b;font-family:monospace;">Score {p['score']}/14</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="background:#ffffff;padding:10px 14px;">
+                      <div style="font-size:13px;font-weight:600;color:#0f172a;margin-bottom:4px;">{p['title']}</div>
+                      <div style="font-size:12px;color:#64748b;">{f['detail']}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>"""
+
+    more_text = ""
+    if len(flagged) > 5:
+        more_text = f'<p style="text-align:center;font-size:12px;color:#94a3b8;margin:0 0 20px 0;">+ {len(flagged) - 5} more posts — see full report</p>'
+
+    season_banner = ""
+    if season:
+        season_banner = f'<tr><td style="padding:0 0 20px 0;"><div style="background:#fef9c3;border-radius:8px;padding:12px 16px;font-size:13px;color:#713f12;">⏸️ Alert suppression active — {season} period. Traffic baseline paused.</div></td></tr>'
+
+    return f"""<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:24px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+          <!-- Header -->
+          <tr>
+            <td style="background:#0f172a;border-radius:10px 10px 0 0;padding:24px 28px;">
+              <div style="color:#ffffff;font-size:16px;font-weight:600;">Red Points — blog monitor</div>
+              <div style="color:#94a3b8;font-size:12px;margin-top:4px;">Week of {week_end} &nbsp;·&nbsp; KEEP posts only</div>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="background:#ffffff;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;padding:24px 28px;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+
+                {season_banner}
+
+                <!-- Summary cards -->
+                <tr>
+                  <td style="padding:0 0 20px 0;">
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td width="25%" style="padding-right:8px;">
+                          <div style="background:#fef2f2;border-radius:8px;padding:14px;text-align:center;">
+                            <div style="font-size:24px;font-weight:600;color:#dc2626;font-family:monospace;">{traffic}</div>
+                            <div style="font-size:11px;color:#991b1b;margin-top:3px;">traffic drops</div>
+                          </div>
+                        </td>
+                        <td width="25%" style="padding-right:8px;">
+                          <div style="background:#fffbeb;border-radius:8px;padding:14px;text-align:center;">
+                            <div style="font-size:24px;font-weight:600;color:#d97706;font-family:monospace;">{llm}</div>
+                            <div style="font-size:11px;color:#92400e;margin-top:3px;">LLM drops</div>
+                          </div>
+                        </td>
+                        <td width="25%" style="padding-right:8px;">
+                          <div style="background:#eff6ff;border-radius:8px;padding:14px;text-align:center;">
+                            <div style="font-size:24px;font-weight:600;color:#2563eb;font-family:monospace;">{stale}</div>
+                            <div style="font-size:11px;color:#1e40af;margin-top:3px;">stale posts</div>
+                          </div>
+                        </td>
+                        <td width="25%">
+                          <div style="background:#f0fdf4;border-radius:8px;padding:14px;text-align:center;">
+                            <div style="font-size:24px;font-weight:600;color:#16a34a;font-family:monospace;">{stable}</div>
+                            <div style="font-size:11px;color:#166534;margin-top:3px;">stable</div>
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Executive summary -->
+                <tr>
+                  <td style="padding:0 0 20px 0;">
+                    <div style="background:#f8fafc;border-left:3px solid #2563eb;border-radius:0 8px 8px 0;padding:16px 18px;">
+                      <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:10px;">Weekly summary</div>
+                      <div style="font-size:13px;color:#334155;line-height:1.7;">{summary_html}</div>
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Flagged posts -->
+                {"<tr><td style='padding:0 0 10px 0;'><div style='font-size:12px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:0.05em;'>Posts needing attention</div></td></tr>" if flagged else ""}
+                {post_cards}
+
+              </table>
+              {more_text}
+
+              <!-- CTA button -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+                <tr>
+                  <td align="center">
+                    <a href="{REPORT_URL}" style="display:inline-block;background:#0f172a;color:#ffffff;padding:12px 28px;border-radius:8px;font-size:13px;font-weight:500;text-decoration:none;">View full interactive report</a>
+                    <div style="font-size:11px;color:#94a3b8;margin-top:8px;">{REPORT_URL}</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#f1f5f9;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:none;padding:16px 28px;text-align:center;">
+              <div style="font-size:11px;color:#94a3b8;line-height:1.6;">
+                Red Points Blog Monitor &nbsp;·&nbsp; Monitoring {len(KEEP_POSTS)} KEEP posts<br>
+                Full interactive report attached as blog-monitor-{week_end}.html
+              </div>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
+def send_email_report(html_content: str, week_end: str, flagged: list[dict], summary: str = "", season: str | None = None):
+    """Sends email with inline HTML body + full interactive report as attachment."""
     if not GMAIL_APP_PASSWORD:
         log.warning("GMAIL_APP_PASSWORD not set — skipping email")
         return
@@ -725,15 +875,9 @@ def send_email_report(html_content: str, week_end: str, flagged: list[dict]):
     msg["To"]      = ", ".join(recipients)
     msg["Subject"] = subject
 
-    flag_count = len(flagged)
-    body_text = (
-        f"Blog Monitor Report — Week ending {week_end}\n\n"
-        f"{flag_count} post(s) flagged this week.\n\n"
-        f"The full interactive report is attached as an HTML file.\n"
-        f"You can also view the live report at: {REPORT_URL}\n\n"
-        f"— Red Points Blog Monitor"
-    )
-    msg.attach(MIMEText(body_text, "plain"))
+    # Inline HTML body — renders directly in Gmail/Outlook
+    email_body = build_email_body(flagged, week_end, summary, season)
+    msg.attach(MIMEText(email_body, "html", "utf-8"))
 
     # Attach HTML report
     attachment = MIMEBase("text", "html")
@@ -1130,7 +1274,7 @@ def main():
     send_slack_alert(summary, flagged, week_end, season)
 
     # Send email report
-    send_email_report(html_report, week_end, flagged)
+    send_email_report(html_report, week_end, flagged, summary=summary, season=season)
 
     log.info("=== Done ===")
 
